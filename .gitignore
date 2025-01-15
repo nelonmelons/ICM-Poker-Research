@@ -1,0 +1,7 @@
+videos
+screenshots
+path_to_screenshots
+.dist
+.mypy_cache
+urls.txt
+.venv
