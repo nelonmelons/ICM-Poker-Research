@@ -1,76 +1,161 @@
 #!/usr/bin/env python3
-"""Parse integer values from a folder of cropped images via OCR and save to a CSV."""
+"""Parse player names and chip counts from WSOP screenshots."""
 
-from __future__ import annotations
-
-import argparse
-import csv
 import os
+import csv
 import re
-from typing import List
-
+import easyocr
 from PIL import Image
-import pytesseract
+import numpy as np
+from pathlib import Path
 
-# Add this line near the top of your file, after importing pytesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+def clean_number(text):
+    """Clean and convert text to a proper number."""
+    try:
+        # Remove any non-digit or non-comma characters
+        clean = ''.join(c for c in text if c.isdigit() or c == ',')
+        # Remove any leading/trailing commas
+        clean = clean.strip(',')
+        # Convert to integer
+        return int(clean.replace(',', ''))
+    except ValueError:
+        return None
 
+def is_valid_chip_count(num):
+    """Check if a number is likely to be a valid chip count."""
+    return 100_000 <= num <= 200_000_000  # Adjusted range based on observed values
 
-def extract_numbers_from_image(image_path: str) -> List[int]:
-    """
-    Extract integers found in the OCR text of an image.
+def is_valid_name(text):
+    """Check if text looks like a player name."""
+    # Remove common OCR artifacts and spaces
+    text = text.strip(' |-')
+    
+    # Skip common non-name text
+    skip_words = {'BLINDS', 'ANTE', 'BB', 'SB', 'OH', 'MLA'}
+    if text.upper() in skip_words:
+        return False
+        
+    # Must be at least 2 chars
+    if len(text) < 2:
+        return False
+        
+    # Must be mostly letters (allow some special chars)
+    letter_count = sum(c.isalpha() for c in text)
+    if letter_count / len(text) < 0.7:  # At least 70% letters
+        return False
+        
+    return True
 
-    :param image_path: The path to the image file.
-    :return: A list of integers extracted from the image.
-    """
-    with Image.open(image_path) as img:
-        text = pytesseract.image_to_string(img)
-    # Find all sequences of digits in the text
-    matches = re.findall(r"\d+", text)
-    return [int(m) for m in matches]
+def extract_info(image_path: str, reader):
+    """Extract text from WSOP screenshot."""
+    try:
+        # Load and process image
+        with Image.open(image_path) as img:
+            img_np = np.array(img)
+            if len(img_np.shape) == 3 and img_np.shape[2] == 4:
+                img = img.convert('RGB')
+                img_np = np.array(img)
+            
+            # Get OCR results with position information
+            results = reader.readtext(img_np)
+            
+            print("\nRaw OCR output:")
+            for _, text, _ in results:
+                print(f"  {text}")
+            
+            # First pass: collect all valid numbers and names
+            valid_numbers = {}  # x_pos -> number
+            valid_names = {}    # x_pos -> name
+            
+            for bbox, text, _ in results:
+                x_pos = (bbox[0][0] + bbox[2][0]) / 2
+                y_pos = (bbox[0][1] + bbox[2][1]) / 2
+                
+                # Check for chip counts
+                matches = re.findall(r'[\d,]+', text)
+                for match in matches:
+                    num = clean_number(match)
+                    if num and is_valid_chip_count(num):
+                        valid_numbers[x_pos] = num
+                
+                # Check for names
+                # Remove the number part if present
+                name_part = re.sub(r'[\d,]+', '', text)
+                if is_valid_name(name_part):
+                    valid_names[x_pos] = name_part.strip()
+            
+            print("\nValid names found:", list(valid_names.values()))
+            print("Valid numbers found:", [f"{n:,}" for n in valid_numbers.values()])
+            
+            # Second pass: match names with numbers based on proximity
+            players = []
+            name_positions = sorted(valid_names.keys())
+            number_positions = sorted(valid_numbers.keys())
+            
+            # Try to match each name with the closest number
+            for name_x in name_positions:
+                name = valid_names[name_x]
+                # Find closest number position
+                if number_positions:
+                    closest_num_x = min(number_positions, 
+                                      key=lambda x: abs(x - name_x))
+                    players.append({
+                        'name': name,
+                        'chips': valid_numbers[closest_num_x],
+                        'x_pos': name_x
+                    })
+            
+            # Sort players by x position (left to right)
+            players.sort(key=lambda p: p['x_pos'])
+            
+            return players, sorted(valid_numbers.values())
+            
+    except Exception as e:
+        print(f"Error processing image: {str(e)}")
+        return [], []
 
+# Initialize EasyOCR reader
+print("Initializing EasyOCR (this may take a moment)...")
+reader = easyocr.Reader(['en'])
 
-def main() -> None:
-    """
-    Parse OCR values from a directory of images and store them in a CSV.
-    """
-    parser = argparse.ArgumentParser(
-        description="Parse integer values from a folder of images (via OCR) and save them into a CSV."
-    )
-    parser.add_argument(
-        "--input_dir",
-        type=str,
-        required=True,
-        help="Path to the directory containing cropped images.",
-    )
-    parser.add_argument(
-        "--output_csv",
-        type=str,
-        required=True,
-        help="Path to the output CSV file to store results.",
-    )
-    args: argparse.Namespace = parser.parse_args()
+# Process images and write to CSV
+with open("output.csv", mode="w", newline="", encoding="utf-8") as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(["filename", "player_name", "chip_count", "all_chip_counts"])
 
-    # Create output directory if it doesn't exist (for the CSV file's parent dir)
-    os.makedirs(os.path.dirname(os.path.abspath(args.output_csv)), exist_ok=True)
+    for image_path in sorted(Path("cropped").glob("*.png")):
+        try:
+            print(f"\nProcessing: {image_path.name}")
+            
+            # Get player-chip pairs and all chip counts
+            players, all_chips = extract_info(str(image_path), reader)
+            
+            # Write results
+            if players:
+                for player in players:
+                    writer.writerow([
+                        image_path.name,
+                        player['name'],
+                        f"{player['chips']:,}",
+                        " | ".join(f"{num:,}" for num in all_chips)
+                    ])
+                    print(f"Found: {player['name']} - {player['chips']:,}")
+            else:
+                writer.writerow([
+                    image_path.name,
+                    "",
+                    "",
+                    " | ".join(f"{num:,}" for num in all_chips) if all_chips else ""
+                ])
+            
+            # Debug output
+            print(f"Players found: {len(players)}")
+            for p in players:
+                print(f"  {p['name']}: {p['chips']:,}")
+            print("-" * 80)
+            
+        except Exception as e:
+            print(f"Error processing {image_path.name}: {str(e)}")
+            writer.writerow([image_path.name, "ERROR", str(e), ""])
 
-    # Gather images
-    image_files = [
-        f
-        for f in os.listdir(args.input_dir)
-        if f.lower().endswith((".png", ".jpg", ".jpeg"))
-    ]
-
-    with open(args.output_csv, mode="w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["filename", "numbers"])
-
-        for image_name in image_files:
-            image_path = os.path.join(args.input_dir, image_name)
-            numbers = extract_numbers_from_image(image_path)
-            # Store the numbers as a comma-separated string, or leave them as a list
-            writer.writerow([image_name, ", ".join(map(str, numbers))])
-
-
-if __name__ == "__main__":
-    main()
+print(f"Processed images saved to output.csv")

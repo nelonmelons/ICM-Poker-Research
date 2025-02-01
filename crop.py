@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 from typing import Optional
 
@@ -35,72 +34,24 @@ def crop_image(
         cropped_img.save(output_path)
 
 
-def main() -> None:
-    """
-    Parse command-line arguments, then crop images in bulk from an input directory
-    and save them into an output directory.
-    """
-    parser = argparse.ArgumentParser(
-        description="Crop images from a directory and store them in a new folder."
-    )
-    parser.add_argument(
-        "--input_dir",
-        type=str,
-        required=True,
-        help="Path to the input directory containing images.",
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        required=True,
-        help="Path to the output directory to store cropped images.",
-    )
-    parser.add_argument(
-        "--left",
-        type=int,
-        required=True,
-        help="Left coordinate of the crop area.",
-    )
-    parser.add_argument(
-        "--top",
-        type=int,
-        required=True,
-        help="Top coordinate of the crop area.",
-    )
-    parser.add_argument(
-        "--width",
-        type=int,
-        required=True,
-        help="Width of the crop area.",
-    )
-    parser.add_argument(
-        "--height",
-        type=int,
-        required=True,
-        help="Height of the crop area.",
-    )
+# Hardcoded directories (update these paths as needed):
+input_dir = "screenshots"
+output_dir = "cropped"
 
-    args: argparse.Namespace = parser.parse_args()
+# Ensure output directory exists
+os.makedirs(output_dir, exist_ok=True)
 
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
+# Iterate through all files in the input directory
+for filename in os.listdir(input_dir):
+    lower_name = filename.lower()
+    if lower_name.endswith((".png", ".jpg", ".jpeg")):
+        input_path = os.path.join(input_dir, filename)
+        output_path = os.path.join(output_dir, filename)
 
-    # Iterate through all files in the input directory
-    for filename in os.listdir(args.input_dir):
-        lower_name = filename.lower()
-        if lower_name.endswith((".png", ".jpg", ".jpeg")):
-            input_path = os.path.join(args.input_dir, filename)
-            output_path = os.path.join(args.output_dir, filename)
+        # Replace or define these crop coordinates
+        x1, y1 = 0, 90
+        x2, y2 = 1600, 200
 
-            crop_image(
-                input_path=input_path,
-                output_path=output_path,
-                left=args.left,
-                top=args.top,
-                width=args.width,
-                height=args.height,
-            )
-
-
-if __name__ == "__main__":
-    main()
+        with Image.open(input_path) as img:
+            cropped_img = img.crop((x1, y1, x2, y2))
+            cropped_img.save(output_path)
