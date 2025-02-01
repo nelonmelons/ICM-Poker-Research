@@ -36,4 +36,4 @@ if __name__ == "__main__":
         r"C:\Users\Nelson Siu\OneDrive - University of Toronto\Desktop\projects\ICM_chipscraper\screenshots"
     )
     csv_path = "output.csv"
-    capture_screenshots(video_dir, screenshot_dir, csv_path, 10)    
+    capture_screenshots(video_dir, screenshot_dir, csv_path, 10)

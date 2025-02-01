@@ -12,6 +12,9 @@ from typing import List
 from PIL import Image
 import pytesseract
 
+# Add this line near the top of your file, after importing pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
 
 def extract_numbers_from_image(image_path: str) -> List[int]:
     """

@@ -5,4 +5,5 @@ path_to_screenshots
 .mypy_cache
 urls.txt
 .venv
-screenshots.py
+output.csv
+cropped
