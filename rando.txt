@@ -1,0 +1,44 @@
+parse names from beginning of videos so then can use that as base for any NaN names
+
+implement error chekcing for like single character etc.
+
+one script for purely extracting info, not chekcing (maybe most basic)
+
+2nd script for cleaning up (organizational purposes)
+
+collection.Counter - library where counter is a class
+
+sum of chips - use data
+- drop when sum of chips != correct sum of chips
+what is correct sum of chips?
+use counter to find correct sum of chips - use counter to find key with max value (i.e. max occurences)
+
+- manually extract 100 rando screenshots and respective chip sets and then compare 
+
+formatting:
+all images in one folder
+
+```
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+{"filepath": "paht/to/image.jpg", "names": ["DOE", "JOHNSON"], chips": [100, 200]}
+```
+out.jsonl
+each line is a json object
+
+step 2 : filter the above data
+- group by same data source
+- combine images by same prefix?
