@@ -42,3 +42,30 @@ each line is a json object
 step 2 : filter the above data
 - group by same data source
 - combine images by same prefix?
+
+
+2.25.25
+we try to evaluate function 
+Loss( f(current-chip-counts), win-percentages  ) 
+win percentage is in terms of who actually won 
+matrix --> largest chip stack guy 
+
+
+pass in chip counts, output is a double stochastic matrix 
+prepare value with target matrix (0 and 1s) which actually tells us where the players....
+calculate loss 
+
+
+try strictest cleaning 
+then if we can have tens of thousands of images 
+report yield (%), going from perfectly fine frame from yield to number (after deduplication)
+if we get 10k, itll be fine 
+(check slack)
+
+go from raw screenshots to frame, then deduplicate,
+
+
+yield % --> including all frames. total # of valid frames  / 95406
+# of valid frames
+# of unique frames  (i.e. after deduplication) 
+goal is 10000^
