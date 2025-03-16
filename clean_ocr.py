@@ -1,198 +1,216 @@
 #!/usr/bin/env python3
-"""Clean and validate OCR results from WSOP screenshots."""
+"""Clean OCR output to extract player information."""
 
 import json
 import re
-from collections import Counter
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
-def clean_number(text: str) -> int:
-    """Clean and convert text to number, handling M/K notation."""
-    try:
-        # Remove any non-relevant characters
-        text = text.upper().strip()
-        text = re.sub(r'[^\d.,MK]', '', text)
+# Keywords to filter out (common UI elements and false positives)
+KEYWORDS_TO_FILTER = [
+    "blinds", "ante", "bb ante", "total pot", "main pot", "side pot", 
+    "dealer", "fold", "check", "call", "raise", "all in", 
+    "pokergo", "bb", "sb", "play", "morikey", "moikey", "til", "rb"
+]
+
+def is_valid_player_name(text: str) -> bool:
+    """Check if text is a valid player name."""
+    # Check for all-uppercase names (standard in poker broadcasts)
+    if re.match(r"^[A-Z][A-Z\s\-'.]{2,}$", text) and not text.isdigit():
+        return True
+    
+    # Also accept mixed-case names (sometimes OCR detects proper case)
+    if re.match(r"^[A-Za-z][A-Za-z\s\-'.]{2,}$", text) and not text.isdigit():
+        return True
         
-        # Handle M/K notation
-        multiplier = 1
-        if text.endswith('M'):
-            multiplier = 1_000_000
-            text = text[:-1]
-        elif text.endswith('K'):
-            multiplier = 1_000
-            text = text[:-1]
-            
-        # Convert to number
-        num = float(text.replace(',', ''))
-        return int(num * multiplier)
-    except (ValueError, TypeError):
-        return None
+    return False
 
-def is_valid_name(text: str) -> bool:
-    """Validate if text is likely a player name."""
-    # Remove common OCR artifacts and spaces
-    text = text.strip().upper()
+def is_numeric_or_abbreviation(text: str) -> bool:
+    """Check if text is a numeric value or abbreviated chip count (e.g., '2M')."""
+    # Check if it's a number with optional commas
+    if re.match(r"^[\d,]+$", text):
+        return True
     
-    # Skip common non-name text
-    skip_words = {'BLINDS', 'ANTE', 'BB', 'SB', 'CALL', 'FOLD', 'RAISE', 'ALL-IN', 'QH', 'OH'}
-    if text in skip_words:
-        return False
-    
-    # Must be at least 2 characters
-    if len(text) < 2:
-        return False
-    
-    # Must be mostly letters
-    letter_count = sum(c.isalpha() for c in text)
-    if letter_count / len(text) < 0.5:  # Reduced from 0.6 to allow more names
-        return False
+    # Check if it's an abbreviated chip count (e.g., '2M', '1.5K')
+    if re.match(r"^(\d+(?:\.\d+)?)\s*[KMB]$", text, re.IGNORECASE):
+        return True
         
-    # Check for repeated characters (likely OCR errors)
-    for i in range(len(text)-2):
-        if text[i] == text[i+1] == text[i+2]:  # Three same chars in a row
-            return False
-            
-    # Check for common OCR garbage patterns
-    garbage_patterns = ['UAA', 'UEA', 'AAA', 'III', '000', '###']
-    if any(pattern in text for pattern in garbage_patterns):
-        return False
-    
-    return True
+    return False
 
-def find_most_common_chip_sum(results: List[Dict]) -> int:
-    """Find the most common total chip count across all hands."""
-    sums = []
-    for result in results:
-        if 'players' in result:  # Updated to use players list
-            total = sum(p['chips'] for p in result['players'])
-            sums.append(total)
+def extract_players(raw_text_items: List[Dict]) -> List[Dict]:
+    """Extract player information from raw OCR text items."""
+    # Use a moderate confidence threshold
+    MIN_CONFIDENCE = 0.5
+    filtered_items = [item for item in raw_text_items if item.get("confidence", 0) > MIN_CONFIDENCE]
     
-    if not sums:
-        return None
+    # Skip processing if no items with sufficient confidence
+    if not filtered_items:
+        return []
+    
+    # First pass: identify potential player names and chip counts separately
+    potential_names = []
+    potential_chips = []
+    
+    for item in filtered_items:
+        text = item.get("text", "").strip()
+        confidence = item.get("confidence", 0)
+        x = item.get("x", 0)
+        y = item.get("y", 0)
         
-    # Use Counter to find most common sum
-    sum_counter = Counter(sums)
-    return sum_counter.most_common(1)[0][0]
-
-def process_raw_results(input_file: str) -> List[Dict]:
-    """Process raw OCR results and create cleaned output."""
-    cleaned_results = []
-    
-    # Read raw results
-    with open(input_file, 'r', encoding='utf-8') as f:
-        raw_results = [json.loads(line) for line in f]
-    
-    # First pass: find most common chip sum
-    expected_chip_sum = find_most_common_chip_sum(raw_results)
-    
-    # Process each result
-    for raw in raw_results:
-        if not raw.get('success', False):
+        # Skip empty text
+        if not text:
             continue
             
-        # First, group items by their approximate y-position (within 10 pixels)
-        y_groups = {}
-        for item in raw['raw_text']:
-            y_group = round(item['y'] / 10) * 10  # Round to nearest 10
-            if y_group not in y_groups:
-                y_groups[y_group] = []
-            y_groups[y_group].append(item)
-        
-        # Find the two main y-groups (names row and chips row)
-        y_values = sorted(y_groups.keys())
-        if len(y_values) < 2:
+        # Skip common UI elements and irrelevant text
+        if text.lower() in KEYWORDS_TO_FILTER:
             continue
-            
-        names_y = y_values[0]  # First row is usually names
-        chips_y = y_values[-1]  # Last row is usually chips
         
-        # Sort items in each row by x-position
-        y_groups[names_y].sort(key=lambda x: x['x'])
-        y_groups[chips_y].sort(key=lambda x: x['x'])
+        # Process chip counts
+        if is_numeric_or_abbreviation(text):
+            try:
+                # Handle abbreviated chip counts (e.g., "2M" for 2 million)
+                chip_abbrev_match = re.match(r"^(\d+(?:\.\d+)?)\s*([KMB])$", text, re.IGNORECASE)
+                if chip_abbrev_match:
+                    value = float(chip_abbrev_match.group(1))
+                    unit = chip_abbrev_match.group(2).upper()
+                    
+                    # Convert to full number
+                    if unit == "K":
+                        chip_count = int(value * 1000)
+                    elif unit == "M":
+                        chip_count = int(value * 1000000)
+                    elif unit == "B":
+                        chip_count = int(value * 1000000000)
+                    else:
+                        continue
+                else:
+                    # Handle regular numbers with commas
+                    chip_count = int(text.replace(",", "").replace(".", ""))
+                
+                potential_chips.append({
+                    "text": text,
+                    "chips": chip_count,
+                    "confidence": confidence,
+                    "y": y,
+                    "x": x
+                })
+            except (ValueError, AttributeError):
+                continue
+            continue
         
-        # Process all items in order, keeping track of valid names and their positions
-        name_positions = []  # List of (index, name, x_pos, confidence) for valid names
-        chip_positions = []  # List of (index, value, x_pos, confidence) for valid chips
-        
-        # Process names row
-        for idx, item in enumerate(y_groups[names_y]):
-            text = item['text'].upper()
-            if is_valid_name(text) and item['confidence'] > 0.5:
-                name_positions.append((idx, text, item['x'], item['confidence']))
-        
-        # Process chips row
-        for idx, item in enumerate(y_groups[chips_y]):
-            num = clean_number(item['text'])
-            if num and 1000 <= num <= 1_000_000_000 and item['confidence'] > 0.5:
-                chip_positions.append((idx, num, item['x'], item['confidence']))
-        
-        # Match names with chips based on their relative positions
-        player_pairs = []
-        used_chips = set()  # Keep track of which chips have been matched
-        
-        # Debug output for mismatched counts
-        print(f"\nProcessing {raw['filepath']}")
-        print(f"Found {len(name_positions)} valid names and {len(chip_positions)} valid chips")
-        
-        # Match names to closest available chip by x-position
-        for name_idx, name, name_x, name_conf in name_positions:
-            # Find closest unused chip by x-position
-            best_chip = None
-            best_distance = float('inf')
-            best_chip_data = None
-            
-            for chip_idx, value, chip_x, chip_conf in chip_positions:
-                if chip_idx not in used_chips:
-                    # Calculate horizontal distance
-                    distance = abs(chip_x - name_x)
-                    if distance < best_distance:
-                        best_distance = distance
-                        best_chip = chip_idx
-                        best_chip_data = (value, chip_conf)
-            
-            # If we found a matching chip within reasonable distance
-            if best_chip is not None and best_distance < 500:  # Adjust threshold as needed
-                value, chip_conf = best_chip_data
-                pair_confidence = (name_conf + chip_conf) / 2
-                if pair_confidence >= 0.3:
-                    player_pairs.append({
-                        'name': name,
-                        'chips': value,
-                        'confidence': pair_confidence
-                    })
-                    used_chips.add(best_chip)
-        
-        # Debug output
-        print("Names row y:", names_y)
-        print("Chips row y:", chips_y)
-        print("Valid names:", [f"{n[1]} (idx: {n[0]}, x: {n[2]:.0f}, conf: {n[3]:.2f})" for n in name_positions])
-        print("Valid chips:", [f"{c[1]:,} (idx: {c[0]}, x: {c[2]:.0f}, conf: {c[3]:.2f})" for c in chip_positions])
-        print("Matched pairs:", [f"{p['name']}: {p['chips']:,} (conf: {p['confidence']:.2f})" for p in player_pairs])
-        
-        result = {
-            'filepath': raw['filepath'],
-            'players': player_pairs,
-            'total_chips': sum(p['chips'] for p in player_pairs),
-            'expected_total': expected_chip_sum,
-            'is_valid': abs(sum(p['chips'] for p in player_pairs) - expected_chip_sum) < 1000000 if expected_chip_sum else None
-        }
-        
-        cleaned_results.append(result)
+        # Check if this might be a valid player name
+        if is_valid_player_name(text):
+            # Less strict name validation 
+            if len(text) >= 2:
+                potential_names.append({
+                    "text": text,
+                    "confidence": confidence,
+                    "y": y,
+                    "x": x
+                })
     
-    return cleaned_results
+    # Sort names by x-coordinate to process left to right
+    potential_names.sort(key=lambda x: x["x"])
+    
+    players = []
+    used_chips = set()  # Track which chip counts we've used
+    
+    # For each player name, find the best matching chip count
+    for name_item in potential_names:
+        name = name_item["text"]
+        name_x = name_item["x"]
+        name_y = name_item["y"]
+        
+        # Find the best matching chip count
+        best_match = None
+        min_score = float('inf')
+        
+        for i, chip_item in enumerate(potential_chips):
+            if i in used_chips:
+                continue
+                
+            chip_x = chip_item["x"]
+            chip_y = chip_item["y"]
+            
+            # Calculate distances - more permissive distance constraints
+            x_distance = abs(chip_x - name_x)
+            y_distance = abs(chip_y - name_y)  # Allow chips above or below names
+            
+            # Use more permissive constraints
+            max_x_distance = 100  # Increased horizontal threshold
+            max_y_distance = 80   # Increased vertical threshold
+            
+            if x_distance > max_x_distance or y_distance > max_y_distance:
+                continue
+            
+            # Calculate score (lower is better)
+            x_weight = 1.0
+            y_weight = 2.0  # Still prioritize vertical alignment but less strictly
+            
+            score = (x_weight * x_distance) + (y_weight * y_distance)
+            
+            if score < min_score:
+                min_score = score
+                best_match = (i, chip_item)
+        
+        if best_match:
+            idx, chip_item = best_match
+            # Only add players with non-zero chip counts
+            if chip_item["chips"] > 0:
+                players.append({
+                    "name": name,
+                    "chips": chip_item["chips"],
+                    "confidence": (name_item["confidence"] + chip_item["confidence"]) / 2
+                })
+                used_chips.add(idx)
+        # If no match found, don't add player - but we still proceed with other players
+    
+    # If there are any chip counts that weren't matched to a player, drop the entire frame
+    if len(used_chips) < len(potential_chips):
+        return []
+    
+    return players
+
+def process_file(input_file: str, output_file: str) -> None:
+    """Process raw OCR output file and write cleaned data to output file."""
+    with open(input_file, "r", encoding="utf-8") as f_in, open(output_file, "w", encoding="utf-8") as f_out:
+        for line in f_in:
+            try:
+                data = json.loads(line.strip())
+                filepath = data.get("filepath", "")
+                raw_text = data.get("raw_text", [])
+                
+                # Extract player information
+                players = extract_players(raw_text)
+                
+                # Calculate total chips
+                total_chips = sum(player.get("chips", 0) for player in players)
+                
+                # Create output record
+                output_record = {
+                    "filepath": filepath,
+                    "players": players,
+                    "total_chips": total_chips,
+                    "expected_total": None,  # To be filled in later if needed
+                    "is_valid": None  # To be filled in later if needed
+                }
+                
+                # Write to output file
+                json.dump(output_record, f_out)
+                f_out.write("\n")
+                
+            except json.JSONDecodeError:
+                print(f"Error decoding JSON: {line}")
+            except Exception as e:
+                print(f"Error processing line: {e}")
 
 def main():
-    # Process and write cleaned results
-    raw_file = "raw_output.jsonl"
-    cleaned_results = process_raw_results(raw_file)
-
-    with open("out.jsonl", 'w', encoding='utf-8') as f:
-        for result in cleaned_results:
-            json.dump(result, f)
-            f.write('\n')
-
-    print("Cleaning complete. Results saved to out.jsonl")
+    """Main function to process raw OCR output."""
+    input_file = "raw_output.jsonl"
+    output_file = "out.jsonl"
+    
+    process_file(input_file, output_file)
+    print(f"Processed OCR data written to {output_file}")
 
 if __name__ == "__main__":
     main() 

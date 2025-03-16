@@ -64,7 +64,7 @@ def main():
 
     # Process images and write raw results to JSONL
     with open("raw_output.jsonl", mode="w", encoding="utf-8") as jsonl_file:
-        for image_path in sorted(Path("cropped").glob("*.png")):
+        for image_path in sorted(Path("test_crops").glob("*.png")):
             print(f"\nProcessing: {image_path.name}")
             result = extract_raw_info(str(image_path), reader)
             # Convert any remaining numpy types to native Python types
