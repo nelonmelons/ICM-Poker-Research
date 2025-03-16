@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import requests
 import argparse
+from tqdm import tqdm
 
 # Configure DeepSeek API key
 DEEPSEEK_API_KEY = "sk-87442b8542574602abe06f7084f7198a"  # Your API key
@@ -30,20 +31,22 @@ def process_frame_with_deepseek(filepath: str, raw_text_items: List[Dict]) -> Di
     
     # Prepare the prompt for DeepSeek-V3
     prompt = f"""
-You are analyzing OCR data from a poker broadcast screenshot. Your task is to extract player names and their chip counts.
+You are analyzing OCR data from a poker broadcast screenshot. Your task is to extract player names (last name) and their chip counts.
 
 Rules for identifying valid data:
 1. Player names:
-   - Must be in ALL CAPS
    - Can be 2 or more letters (e.g. "VU" is valid)
    - Common examples: "SMITH", "NEGREANU", "VU"
-   - Ignore UI elements like "BLINDS", "ANTE", "BB", "SB"
+   - Ignore UI elements like "BLINDS", "ANTE", "BB", "SB", etc.
+   - use your best judgement and knowledge of poker tournaments to determine if the name is a player or not
+   - sometimes the letters may be lower case (due to ocr), so correct the name as you see fit
 
 2. Chip counts:
    - Must be numbers with commas (e.g. "1,234,000")
    - Or abbreviated (e.g. "1.2M" = 1,200,000)
    - Must be close to their player name
    - Must be non-zero
+   - sometimes zeroes may be read as "o", so adjust as you see fit
 
 3. Layout:
    - Player names and their chip counts are typically vertically aligned
@@ -59,7 +62,7 @@ Return ONLY a JSON array of valid players and their chip counts:
     ...
 ]
 
-If you can't confidently match a name with its chip count, exclude it entirely.
+If you can't confidently match a name with its chip count, exclude the frame/entry entirely.
 If there are any unmatched chip counts, return an empty array.
 """
 
@@ -135,13 +138,17 @@ If there are any unmatched chip counts, return an empty array.
 
 def process_file(input_file: str, output_file: str) -> None:
     """Process raw OCR output file with DeepSeek and write cleaned data to output file."""
-    with open(input_file, "r", encoding="utf-8") as f_in, open(output_file, "w", encoding="utf-8") as f_out:
-        line_count = 0
+    # First count total lines
+    with open(input_file, "r", encoding="utf-8") as f:
+        total_lines = sum(1 for _ in f)
+    
+    # Process files with progress bar
+    with open(input_file, "r", encoding="utf-8") as f_in, \
+         open(output_file, "w", encoding="utf-8") as f_out, \
+         tqdm(total=total_lines, desc="Processing frames") as pbar:
+        
         for line in f_in:
             try:
-                line_count += 1
-                print(f"Processing line {line_count}...")
-                
                 data = json.loads(line.strip())
                 filepath = data.get("filepath", "")
                 raw_text = data.get("raw_text", [])
@@ -155,6 +162,9 @@ def process_file(input_file: str, output_file: str) -> None:
                 
                 # Add a small delay to avoid hitting rate limits
                 time.sleep(0.1)  # DeepSeek has higher rate limits, so we can reduce the delay
+                
+                # Update progress bar
+                pbar.update(1)
                 
             except json.JSONDecodeError:
                 print(f"Error decoding JSON: {line}")
