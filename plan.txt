@@ -69,3 +69,6 @@ yield % --> including all frames. total # of valid frames  / 95406
 # of valid frames
 # of unique frames  (i.e. after deduplication) 
 goal is 10000^
+
+do finetuning, use a lighter model (3.5 turbo) so faster, that has better rate limits
+write golden output for all the images
