@@ -1,7 +1,11 @@
 import openai
 import time
+import os
 
-openai.api_key= "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"
+# Load API key from environment variable instead of hardcoding
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+if not openai.api_key:
+    raise ValueError("No OpenAI API key found. Please set the OPENAI_API_KEY environment variable.")
 
 upload_response = openai.File.create(
     file=open("training_data.jsonl", "rb"),
