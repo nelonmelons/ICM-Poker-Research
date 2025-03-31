@@ -72,3 +72,7 @@ goal is 10000^
 
 do finetuning, use a lighter model (3.5 turbo) so faster, that has better rate limits
 write golden output for all the images
+
+use multithreading - look at juho uoft
+
+change \ s to / s?
