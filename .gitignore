@@ -12,6 +12,7 @@ cropped100
 cropped
 
 # Environment variables and secrets
+config.toml
 .env
 .env.*
 *.pem
