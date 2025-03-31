@@ -10,18 +10,3 @@ debug_images
 100_imgtest
 cropped100
 cropped
-
-# Environment variables and secrets
-config.toml
-.env
-.env.*
-*.pem
-*config.json
-secrets.json
-credentials.json
-*_key.json
-*_keys.json
-*secrets*
-*credentials*
-*apikey*
-*api_key*
