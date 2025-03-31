@@ -37,7 +37,7 @@ def crop_image(
 
 # Hardcoded directories (update these paths as needed):
 input_dir = "100_imgtest"
-output_dir = "test_crops"
+output_dir = "testcrop2"
 
 # Ensure output directory exists
 os.makedirs(output_dir, exist_ok=True)
@@ -51,7 +51,7 @@ for filename in os.listdir(input_dir):
 
         # Replace or define these crop coordinates
         x1, y1 = 0, 90
-        x2, y2 = 1600, 200
+        x2, y2 = 1900, 200
 
         with Image.open(input_path) as img:
             cropped_img = img.crop((x1, y1, x2, y2))
