@@ -10,3 +10,18 @@ debug_images
 100_imgtest
 cropped100
 cropped
+
+# Environment variables and secrets
+.env
+.env.*
+*.pem
+config.toml
+*config.json
+secrets.json
+credentials.json
+*_key.json
+*_keys.json
+*secrets*
+*credentials*
+*apikey*
+*api_key*
