@@ -1,0 +1,6 @@
+[{"word": "hi", "location": [100, 200]}]
+
+this is simply raw_output.jsonl --> you're passing this in as PART  of the prompt to gpt / fine tune
+ + the actual word prompt (parse and extract player name, chip count, etc. )
+
+ also, reformat the propmt given to gpt. should mention NaN values, numbers  (e.g. o to 0), Dealer, numbers being read wrong, confidence score, etc.

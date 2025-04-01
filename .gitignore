@@ -10,6 +10,7 @@ debug_images
 100_imgtest
 cropped100
 cropped
+.env
 
 # Environment variables and secrets
 .env

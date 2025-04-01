@@ -1,0 +1,8 @@
+images/0.jpg
+images/10.jpg
+
+
+???
+image paths
+im assuming you make script that will merge this with the annotations.jsonl (i.e. openai output)
+to create complete dataset
